@@ -44,7 +44,7 @@ module swervolf_syscon
    output reg 	     o_wb_ack,
    
    output wire [ 7          :0] AN,
-   output wire [ 6          :0] Digits_Bits);
+   output wire [ 7          :0] Digits_Bits);
 
    reg [63:0] 	      mtime;
    reg [63:0] 	      mtimecmp;
@@ -273,21 +273,20 @@ module SevSegDisplays_Controller(
                      input wire    [ 7:0] Enables_Reg,
                      input wire    [31:0] Digits_Reg,
                      output wire   [ 7:0] AN,
-                     output wire   [ 6:0] Digits_Bits);
+                     output wire   [ 7:0] Digits_Bits);
 
   wire [(COUNT_MAX-1):0] countSelection;
   wire [ 3:0] DecNumber;
   wire overflow_o_count;
 
-
-
-  SevenSegDecoder SevSegDec(.data(DecNumber), .seg(Digits_Bits));
-
-
+    // SevenSegDecoder SevSegDec(.data(DecNumber), .seg(Digits_Bits));
+    SevenSegDecoder SevSegDec(
+        .data(DecNumber), 
+        .seg(Digits_Bits),
+        .SEL(countSelection[(COUNT_MAX-1):(COUNT_MAX-3)])
+    );
 
   counter #(COUNT_MAX)  counter20(clk, ~rst_n, 1'b0, 1'b1, 1'b0, 1'b0, 16'b0, countSelection, overflow_o_count);
-
-
 
   wire [ 7:0] [7:0] enable;
 
@@ -315,14 +314,27 @@ module SevSegDisplays_Controller(
 
   wire [ 7:0] [3:0] digits_concat;
 
-  assign digits_concat[0] = Digits_Reg[3:0];
-  assign digits_concat[1] = Digits_Reg[7:4];
-  assign digits_concat[2] = Digits_Reg[11:8];
-  assign digits_concat[3] = Digits_Reg[15:12];
-  assign digits_concat[4] = Digits_Reg[19:16];
-  assign digits_concat[5] = Digits_Reg[23:20];
-  assign digits_concat[6] = Digits_Reg[27:24];
-  assign digits_concat[7] = Digits_Reg[31:28];
+// replaced with BCD values
+  // assign digits_concat[0] = Digits_Reg[3:0];
+  // assign digits_concat[1] = Digits_Reg[7:4];
+  // assign digits_concat[2] = Digits_Reg[11:8];
+  // assign digits_concat[3] = Digits_Reg[15:12];
+  // assign digits_concat[4] = Digits_Reg[19:16];
+  // assign digits_concat[5] = Digits_Reg[23:20];
+  // assign digits_concat[6] = Digits_Reg[27:24];
+  // assign digits_concat[7] = Digits_Reg[31:28];
+  
+    wire [31:0] bcd_reg;
+    BCD bcd(Digits_Reg,bcd_reg);
+    
+  assign digits_concat[0] = bcd_reg[3:0];
+  assign digits_concat[1] = bcd_reg[7:4];
+  assign digits_concat[2] = bcd_reg[11:8];
+  assign digits_concat[3] = bcd_reg[15:12];
+  assign digits_concat[4] = bcd_reg[19:16];
+  assign digits_concat[5] = bcd_reg[23:20];
+  assign digits_concat[6] = bcd_reg[27:24];
+  assign digits_concat[7] = bcd_reg[31:28];
 
   SevSegMux
   #(
@@ -338,35 +350,74 @@ module SevSegDisplays_Controller(
 
 endmodule
 
-
-
-module SevenSegDecoder(input wire     [3:0] data,
-                           output reg [6:0] seg);
-  always @(*)
-    case(data)
-                  // abc_defg
-      4'h0: seg = 7'b000_0001;
-      4'h1: seg = 7'b100_1111;
-      4'h2: seg = 7'b001_0010;
-      4'h3: seg = 7'b000_0110;
-      4'h4: seg = 7'b100_1100;
-      4'h5: seg = 7'b010_0100;
-      4'h6: seg = 7'b010_0000;
-      4'h7: seg = 7'b000_1111;
-      4'h8: seg = 7'b000_0000;
-      4'h9: seg = 7'b000_1100;
-      4'ha: seg = 7'b000_1000;
-      4'hb: seg = 7'b110_0000;
-      4'hc: seg = 7'b111_0010;
-      4'hd: seg = 7'b100_0010;
-      4'he: seg = 7'b011_0000;
-      4'hf: seg = 7'b011_1000;
-      default: 
-            seg = 7'b111_1111;
-    endcase
+// Binary coded decimal, convert hex to int10 digits
+module BCD
+#(
+    parameter DIG=3
+)
+(
+    input wire [31:0] Digits_Reg, 
+    output wire [31:0] bcd_reg
+);
+    assign bcd_reg[31:(DIG*4)] = Digits_Reg[31:(DIG*4)];
+    generate
+        for (genvar i=0; i< DIG; i=i+1) begin
+            assign bcd_reg[(i*4)+:4] = (Digits_Reg[0+:(DIG*4)]/(10**i))%10;
+        end
+    endgenerate
 endmodule
 
-
+module SevenSegDecoder(input wire     [3:0] data,
+                    output reg [7:0] seg,
+                    input  wire [5-1:0] SEL
+                    );
+    wire [2:0] seg1;
+    wire dp;
+    assign seg1 = data[3:1];
+    assign dp = data[0];
+  always @(*)
+    case(SEL)
+        3:      // motion indicator
+        // case for single segment control of digit[3]
+            // data format {3'b[seg1],1'b[dp]}
+            case(seg1)
+                          // abc_defg_(dp)
+              3'h0: seg = {7'b011_1111,dp};  // a
+              3'h1: seg = {7'b101_1111,dp};
+              3'h2: seg = {7'b110_1111,dp};
+              3'h3: seg = {7'b111_0111,dp};
+              3'h4: seg = {7'b111_1011,dp};
+              3'h5: seg = {7'b111_1101,dp};
+              3'h6: seg = {7'b111_1110,dp};  // g
+              default: 
+                    seg = {7'b111_1111,dp};  // all off
+            endcase
+        
+        default: begin      // normal 7seg digits
+            case(data)
+                          // abc_defg_(dp)
+              4'h0: seg = 8'b000_0001_1;
+              4'h1: seg = 8'b100_1111_1;
+              4'h2: seg = 8'b001_0010_1;
+              4'h3: seg = 8'b000_0110_1;
+              4'h4: seg = 8'b100_1100_1;
+              4'h5: seg = 8'b010_0100_1;
+              4'h6: seg = 8'b010_0000_1;
+              4'h7: seg = 8'b000_1111_1;
+              4'h8: seg = 8'b000_0000_1;
+              4'h9: seg = 8'b000_1100_1;
+              4'ha: seg = 8'b000_1000_1;
+              4'hb: seg = 8'b110_0000_1;
+              4'hc: seg = 8'b111_0010_1;
+              4'hd: seg = 8'b100_0010_1;
+              4'he: seg = 8'b011_0000_1;
+              4'hf: seg = 8'b011_1000_1;
+              default: 
+                    seg = 8'b111_1111_1;
+            endcase
+        end
+    endcase
+endmodule
 
 module SevSegMux
 #(

@@ -82,7 +82,8 @@ module swervolf_core
     inout wire [31:0]  io_data,
 
     output wire [ 7          :0] AN,
-    output wire [ 6          :0] Digits_Bits,
+    output wire [ 7          :0] Digits_Bits,   // added a bit for decimal point
+    input wire [3:0]    PBTN,       // push button
 
     output wire        o_accel_sclk,
     output wire        o_accel_cs_n,
@@ -352,6 +353,26 @@ module swervolf_core
         .ext_pad_i     (i_gpio[31:0]),
         .ext_pad_o     (o_gpio[31:0]),
         .ext_padoe_o   (en_gpio));
+
+    wire pbtn_irq;
+
+   gpio_top pbtn_module(
+        .wb_clk_i     (clk), 
+        .wb_rst_i     (wb_rst), 
+        .wb_cyc_i     (wb_m2s_pbtn_cyc), 
+        .wb_adr_i     ({2'b0,wb_m2s_pbtn_adr[5:2],2'b0}), 
+        .wb_dat_i     (wb_m2s_pbtn_dat), 
+        .wb_sel_i     (4'b1111),
+        .wb_we_i      (wb_m2s_pbtn_we), 
+        .wb_stb_i     (wb_m2s_pbtn_stb), 
+        .wb_dat_o     (wb_s2m_pbtn_dat),
+        .wb_ack_o     (wb_s2m_pbtn_ack), 
+        .wb_err_o     (wb_s2m_pbtn_err),
+        .wb_inta_o    (pbtn_irq),
+        // External GPIO Interface
+        .ext_pad_i     ({PBTN}),
+        .ext_pad_o     (),
+        .ext_padoe_o   ());
 
 
 

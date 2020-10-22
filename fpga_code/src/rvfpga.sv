@@ -48,7 +48,8 @@ module rvfpga
     inout wire [15:0]  i_sw,
     output reg [15:0]  o_led,
     output reg [7:0]   AN,
-    output reg         CA, CB, CC, CD, CE, CF, CG,
+    output reg         CA, CB, CC, CD, CE, CF, CG, DP,
+    input wire          BTNU,BTNL,BTNR,BTND,
     output wire        o_accel_cs_n,
     output wire        o_accel_mosi,
     input wire         i_accel_miso,
@@ -196,6 +197,30 @@ module rvfpga
       .dmi_stat       (2'd0),
       .version        (4'd1));
 
+    wire [5:0] PBTN;
+    
+    debounce
+    #(
+        // parameters
+        .CLK_FREQUENCY_HZ		 (100_000000), 
+        .DEBOUNCE_FREQUENCY_HZ	 (250),
+        .RESET_POLARITY_LOW		 (1),
+        .CNTR_WIDTH 			 (32),
+        
+        .SIMULATE				 (0),
+        .SIMULATE_FREQUENCY_CNT	 (5)
+    )
+    pbtn_db
+    (
+        // ports
+        .clk (clk_core),				// clock	
+        .pbtn_in ({BTNU,BTNL,BTNR,BTND}),			// pushbutton inputs - including CPU RESET button
+        // .switch_in,			// slider switch inputs
+        
+        .pbtn_db (PBTN) 	// debounced outputs of pushbuttons	
+        // .swtch_db	// debounced outputs of slider switches
+    );
+
    swervolf_core
      #(.bootrom_file (bootrom_file))
    swervolf
@@ -256,11 +281,13 @@ module rvfpga
       .i_ram_init_error (litedram_init_error),
       .io_data        ({i_sw[15:0],gpio_out[15:0]}),
       .AN (AN),
-      .Digits_Bits ({CA,CB,CC,CD,CE,CF,CG}),
+      .Digits_Bits ({CA,CB,CC,CD,CE,CF,CG,DP}),
+      .PBTN         (PBTN[3:0]),
       .o_accel_sclk   (accel_sclk),
       .o_accel_cs_n   (o_accel_cs_n),
       .o_accel_mosi   (o_accel_mosi),
       .i_accel_miso   (i_accel_miso));
+      
 
    always @(posedge clk_core) begin
       o_led[15:0] <= gpio_out[15:0];
